@@ -1,0 +1,449 @@
+//***********************************************************************
+// Project		    : GeoMatch
+// Author           : Shiju P K
+// Email			: shijupk@gmail.com
+// Created          : 10-01-2010
+//
+// File Name		: GeoMatch.cpp
+// Last Modified By : Shiju P K
+// Last Modified On : 13-07-2010
+// Description      : class to implement edge based template matching
+//
+// Copyright        : (c) . All rights reserved.
+//***********************************************************************
+
+#include "StdAfx.h"
+#include "GeoMatch.h"
+
+
+GeoMatch::GeoMatch(void)
+{
+	noOfCordinates = 0;  // Initilize  no of cppodinates in model points
+	modelDefined = false; 
+}
+
+
+int GeoMatch::CreateGeoMatchModel(const Mat &templateArr,double maxContrast,double minContrast)
+{
+
+	Mat nmsEdges = templateArr.clone();//Matrix to store temp restult
+	Mat src = templateArr.clone();
+	if( src.type()!= CV_8UC1)
+	{	
+		return 0;
+	}
+	
+	// set width and height
+	cv::Size Ssize;
+	Ssize.width =  src.rows;
+	Ssize.height= src.cols;
+	modelHeight =src.cols;		//Save Template height
+	modelWidth = src.rows;		//Save Template width
+
+	noOfCordinates=0;	//initialize
+	
+	//vector<Point> cordinates; //coorinates of selected points in template image
+	//vector<double> edgeMagitude;//edge magnitude for selected points
+	//vector<double> edgeDerivativeX;//edge X derivative for selected points
+	//vector<double> edgeDerivativeY;//edge Y derivative for selected points
+
+
+	// Calculate gradient of Template
+	Mat gx;
+	Mat gy;
+	Mat abs_gx, abs_gy;
+	Mat grad;
+	int scale = 1;
+	int delta = 0;
+	int ddepth = CV_16S;
+	Sobel(src, gx, ddepth, 1, 0, 3, scale, delta, BORDER_DEFAULT);
+	Sobel(src, gy, ddepth, 0, 1, 3, scale, delta, BORDER_DEFAULT);
+	//cv::Sobel(src, gx, 1, 0, 3);//gradient in X direction
+	//cv::Sobel(src, gy, 0, 1, 3);//gradient in Y direction
+	convertScaleAbs(gx, abs_gx);
+	convertScaleAbs(gy, abs_gy);
+	addWeighted(abs_gx, 0.5, abs_gy, 0.5, 0, grad);
+
+	const short* _sdx; 
+	const short* _sdy; 
+	double fdx,fdy;	
+    double MagG, DirG;//梯度值
+	double MaxGradient=-99999.99;
+	double direction;
+	int *orients = new int[ Ssize.height *Ssize.width];//?case director
+	int count = 0,i,j; // count variable;
+	
+	//double **magMat;//?
+	//CreateDoubleMatrix(magMat,Ssize);//?
+	
+	for( i = 1; i < Ssize.height-1; i++ )
+    {
+    	for( j = 1; j < Ssize.width-1; j++ )
+        { 		 
+			_sdx = (short*)(gx.data + gx.step[1] * i);//
+			_sdy = (short*)(gy.data + gy.step[1] * i);
+			fdx = _sdx[j]; fdy = _sdy[j];        // read x, y derivatives
+
+			MagG = sqrt((float)(fdx*fdx) + (float)(fdy*fdy)); //Magnitude = Sqrt(gx^2 +gy^2)
+			//direction = cvFastArctan((float)fdy, (float)fdx);	 //Direction = invtan (Gy / Gx)
+			direction = cv::fastAtan2((float)fdy, (float)fdx);
+			//magMat[i][j] = MagG;
+
+			if (MagG > MaxGradient)
+				MaxGradient = MagG; // get maximum gradient value for normalizing.
+
+			// get closest angle from 0, 45, 90, 135 set
+			if ((direction>0 && direction < 22.5) || (direction >157.5 && direction < 202.5) || (direction>337.5 && direction < 360))
+				direction = 0;
+			else if ((direction > 22.5 && direction < 67.5) || (direction >202.5 && direction <247.5))
+				direction = 45;
+			else if ((direction >67.5 && direction < 112.5) || (direction>247.5 && direction<292.5))
+				direction = 90;
+			else if ((direction >112.5 && direction < 157.5) || (direction>292.5 && direction < 337.5))
+				direction = 135;
+			else
+				direction = 0;
+
+			orients[count] = (int)direction;
+			count++;
+		}
+	}
+	
+	count=0; // init count
+	// non maximum suppression
+	cout << "Ssize.height=" << Ssize.height << endl;
+	cout << "Ssize.width=" << Ssize.width << endl;
+
+	double leftPixel,rightPixel;
+	
+	for (i = 1; i < Ssize.height - 1; i++)   //error
+    {
+		
+		for (j = 1; j < Ssize.width - 1; j++)
+        {
+				switch ( orients[count] )
+                {
+                   case 0:
+                      
+						leftPixel = (double)grad.at<uchar>(j - 1,i);
+						rightPixel = (double)grad.at<uchar>(j + 1,i);
+
+                        break;
+                    case 45:
+				
+						leftPixel = (double)grad.at<uchar>(j + 1,i - 1);
+						rightPixel = (double)grad.at<uchar>(j - 1,i + 1);
+                        break;
+                    case 90:
+					
+						leftPixel = (double)grad.at<uchar>(j,i - 1);
+						rightPixel = (double)grad.at<uchar>(j,i + 1);
+                        break;
+                    case 135:
+		
+						leftPixel = (double)grad.at<uchar>(j - 1,i - 1);
+						rightPixel = (double)grad.at<uchar>(j + 1,i + 1);
+                        break;
+
+					//case 0:
+					//	 leftPixel  = (double)grad.at<uchar>(i, j - 1);
+					//	rightPixel = (double)grad.at<uchar>(i, j + 1);
+					//	
+
+					//	break;
+					//case 45:
+					//	leftPixel = (double)grad.at<uchar>(i - 1, j + 1);
+					//	rightPixel = (double)grad.at<uchar>(i + 1, j - 1);
+					//
+					//	break;
+					//case 90:
+					//	leftPixel = (double)grad.at<uchar>(i - 1, j);
+					//	rightPixel = (double)grad.at<uchar>(i + 1, j);
+					//
+					//	break;
+					//case 135:
+					//	leftPixel = (double)grad.at<uchar>(i - 1, j - 1);
+					//	rightPixel = (double)grad.at<uchar>(i + 1, j + 1);
+				
+					//	break;
+				 }
+				// compare current pixels value with adjacent pixels
+				/*int curValue = grad.at<uchar>(j, i);
+				int testValue = grad.at<uchar>(180, 240);*/
+				if (((double)grad.at<uchar>(j, i) < leftPixel) || ((double)grad.at<uchar>(j, i) < rightPixel))
+					//(nmsEdges.ptr<uchar>(i)+ nmsEdges.step*i)[j]=0;)
+				
+				nmsEdges.at<uchar>(j, i) = 0;
+				//int testvalue1 = nmsEdges.at<uchar>(j, i);
+                else
+					nmsEdges.at<uchar>(j, i) = (uchar)(grad.at<uchar>(j, i) / MaxGradient * 255);
+                  // (nmsEdges.ptr<uchar>(i) + nmsEdges.step*i)[j]=(uchar)(grad.at<uchar>(j, i) /MaxGradient*255);//error
+				  // nmsEdges.at<uchar>(j,i)= (uchar)(grad.at<uchar>(j, i) / MaxGradient * 255);
+				//if (((double)grad.at<uchar>(j, i) < leftPixel) || ((double)grad.at<uchar>(j, i) < rightPixel))
+				//	(nmsEdges.ptr + nmsEdges.step*i)[j] = 0;
+				//else
+				//	(nmsEdges.ptr + nmsEdges.step*i)[j] = (uchar)(grad.at<uchar>(j, i) / MaxGradient * 255);//error
+				//int testvalue = nmsEdges.at<uchar>(j, i);// nmsEdges 数据不对
+				//int testvalue = (int)(nmsEdges.at<uchar>(5, 9)); // nmsEdges 数据不对，可能数据类型问题
+				//
+				//cout << "testvalue=" << testvalue << endl;
+				count++;
+			}
+
+		}
+	
+
+	int RSum=0,CSum=0;
+	int curX,curY;
+	int flag=1;
+
+	//Hysterisis threshold
+	for( i = 1; i < Ssize.height-1; i++ )
+    {
+		for( j = 1; j < Ssize.width-1; j++ )
+        {
+			_sdx = (short*)(gx.data + gx.step[1]*i);
+			_sdy = (short*)(gy.data + gy.step[1]*i);
+			fdx = _sdx[j]; fdy = _sdy[j];
+				
+			MagG = sqrt(fdx*fdx + fdy*fdy); //Magnitude = Sqrt(gx^2 +gy^2)
+			DirG =cv::fastAtan2((float)fdy,(float)fdx);	 //Direction = tan(y/x)
+		
+			flag=1;
+			if (nmsEdges.at<uchar>(j,i) < maxContrast)
+			{
+				if (nmsEdges.at<uchar>(j, i) < minContrast)
+				{
+					
+					nmsEdges.at<uchar>(j, i) = 0;
+					flag=0; // remove from edge
+				}
+				else
+				{   // if any of 8 neighboring pixel is not greater than max contraxt remove from edge
+					if ((nmsEdges.at<uchar>(j-1,i-1)< maxContrast) &&
+						(nmsEdges.at<uchar>(j,i-1) < maxContrast) &&
+						(nmsEdges.at<uchar>(j+1, i - 1) < maxContrast) &&
+						(nmsEdges.at<uchar>(j-1, i ) < maxContrast) &&
+						(nmsEdges.at<uchar>(j+1, i ) < maxContrast) &&
+						(nmsEdges.at<uchar>(j-1, i + 1) < maxContrast) &&
+						(nmsEdges.at<uchar>(j, i + 1) < maxContrast) &&
+						(nmsEdges.at<uchar>(j+1, i + 1) < maxContrast))
+					{
+						nmsEdges.at<uchar>(j, i) = 0;
+						flag=0;
+					}
+				}
+				
+			}
+			
+			// save selected edge information
+			curX=i;	curY=j;
+			if(flag!=0)
+			{
+				if(fdx!=0 || fdy!=0)
+				{		
+					RSum=RSum+curX;	CSum=CSum+curY; // Row sum and column sum for center of gravity
+					Point tempCurPoint;
+					tempCurPoint.x = curX;
+					tempCurPoint.y = curY;
+					cordinates.push_back(tempCurPoint);
+
+					edgeDerivativeX.push_back(fdx);
+					edgeDerivativeY.push_back(fdy);
+					
+					//handle divide by zero
+					if(MagG!=0)
+						edgeMagnitude.push_back(1/MagG);  // gradient magnitude 
+					else
+						edgeMagnitude.push_back(0);
+															
+					noOfCordinates++;
+
+				}
+			}
+		}
+	}
+
+	cout << "RSum=" << RSum << endl;
+	cout << "CSum=" << CSum << endl;
+
+	centerOfGravity.x = RSum /noOfCordinates; // center of gravity    error
+	centerOfGravity.y = CSum /noOfCordinates ;// center of gravity
+		
+	// change coordinates to reflect center of gravity
+	for(int m=0;m<noOfCordinates ;m++)
+	{
+		int temp=0;
+		temp=cordinates[m].x;
+		cordinates[m].x= abs(temp-centerOfGravity.x);//??
+		temp=cordinates[m].y;
+		cordinates[m].y =abs(temp-centerOfGravity.y);
+	}
+	
+	////cvSaveImage("Edges.bmp",imgGDir);
+	
+	// free alocated memories
+	delete[] orients;
+
+	modelDefined=true;
+	return 1;
+}
+
+
+double GeoMatch::FindGeoMatchModel(const Mat& srcarr,double minScore,double greediness,cv::Point resultPoint)
+{
+
+	double resultScore=0;
+	double partialSum=0;
+	double sumOfCoords=0;
+	double partialScore;
+	const short* _Sdx;
+	const short* _Sdy;
+	int i,j,m ;			// count variables
+	double iTx,iTy,iSx,iSy;
+	double gradMag;    
+	int curX,curY;
+
+	Mat matGradMag;
+	Mat src;
+	
+	if(CV_MAT_TYPE( src.type() ) != CV_8UC1 || !modelDefined)
+	{
+		return 0;
+	}
+
+	// source image size
+	cv::Size Ssize;
+	Ssize.width =  src.rows;//maybe error
+	Ssize.height= src.cols;
+	
+	Mat Sdx(Ssize.height, Ssize.width, CV_16SC1); 
+	Mat Sdy(Ssize.height, Ssize.width, CV_16SC1);
+	
+	//change
+	Mat gx;
+	Mat gy;
+	Mat abs_gx, abs_gy;
+	Mat grad;
+	int scale = 1;
+	int delta = 0;
+	int ddepth = CV_16S;
+	Sobel(src, gx, ddepth, 1, 0, 3, scale, delta, BORDER_DEFAULT);
+	Sobel(src, gy, ddepth, 0, 1, 3, scale, delta, BORDER_DEFAULT);
+		
+	// stoping criterias to search for model
+	double normMinScore = minScore /noOfCordinates; // precompute minumum score 
+	double normGreediness = ((1- greediness * minScore)/(1-greediness)) /noOfCordinates; // precompute greedniness 
+		
+	for( i = 0; i < Ssize.height; i++ )
+    {
+		 _Sdx = (short*)(Sdx.data + Sdx.step*(i));
+		 _Sdy = (short*)(Sdy.data + Sdy.step*(i));
+		
+		 for( j = 0; j < Ssize.width; j++ )
+		{
+				iSx=_Sdx[j];  // X derivative of Source image
+				iSy=_Sdy[j];  // Y derivative of Source image
+
+				gradMag=sqrt((iSx*iSx)+(iSy*iSy)); //Magnitude = Sqrt(dx^2 +dy^2)
+							
+				if(gradMag!=0) // hande divide by zero
+					matGradMag.at<uchar>(j,i)=1/gradMag;   // 1/Sqrt(dx^2 +dy^2)
+				else
+					matGradMag.at<uchar>(j, i) = 0;
+				
+		}
+	}
+	for( i = 0; i < Ssize.height; i++ )
+    {
+			for( j = 0; j < Ssize.width; j++ )
+             { 
+				 partialSum = 0; // initilize partialSum measure
+				 for(m=0;m<noOfCordinates;m++)
+				 {
+					 curX	= i + cordinates[m].x ;	// template X coordinate
+					 curY	= j + cordinates[m].y ; // template Y coordinate
+					 iTx	= edgeDerivativeX[m];	// template X derivative
+					 iTy	= edgeDerivativeY[m];    // template Y derivative
+
+					 if(curX<0 ||curY<0||curX>Ssize.height-1 ||curY>Ssize.width-1)
+						 continue;
+					 
+					 _Sdx = (short*)(Sdx.data + Sdx.step[1]*(curX));
+					 _Sdy = (short*)(Sdy.data + Sdy.step[1]*(curX));
+						
+					 iSx=_Sdx[curY]; // get curresponding  X derivative from source image
+					 iSy=_Sdy[curY];// get curresponding  Y derivative from source image
+						
+					if((iSx!=0 || iSy!=0) && (iTx!=0 || iTy!=0))
+					 {
+						 partialSum = partialSum + ((iSx*iTx)+(iSy*iTy))*(edgeMagnitude[m] * matGradMag.at<uchar>(curY,curX));									
+					 }
+
+					sumOfCoords = m + 1;
+					partialScore = partialSum /sumOfCoords ;
+					// check termination criteria
+					// if partial score score is less than the score than needed to make the required score at that position
+					// break serching at that coordinate.
+					if( partialScore < (MIN((minScore -1) + normGreediness*sumOfCoords,normMinScore*  sumOfCoords)))
+						break;
+									
+				}
+				if(partialScore > resultScore)
+				{
+					resultScore = partialScore; //  Match score
+					resultPoint.x = i;			// result coordinate X		
+					resultPoint.y = j;			// result coordinate Y
+				}
+			} 
+		}
+	
+	
+	return resultScore;
+}
+// destructor
+GeoMatch::~GeoMatch(void)
+{
+}
+
+//allocate memory for doubel matrix
+void GeoMatch::CreateDoubleMatrix(double **&matrix,CvSize size)
+{
+	matrix = new double*[size.height];
+	for(int iInd = 0; iInd < size.height; iInd++)
+		matrix[iInd] = new double[size.width];
+}
+// release memory
+void GeoMatch::ReleaseDoubleMatrix(double **&matrix,int size)
+{
+	for(int iInd = 0; iInd < size; iInd++) 
+        delete[] matrix[iInd]; 
+}
+
+
+// draw contours around result image
+void GeoMatch::DrawContours(Mat &source,cv::Point COG,cv::Scalar color,int lineWidth)
+{
+	cv::Point point;
+	point.y=COG.x;
+	point.x=COG.y;
+	for(int i=0; i<noOfCordinates; i++)
+	{	
+		point.y=cordinates[i].x + COG.x;
+		point.x=cordinates[i].y + COG.y;
+		cv::line(source,point,point,color,lineWidth);
+	}
+}
+
+// draw contour at template image
+void GeoMatch::DrawContours(Mat& source,cv::Scalar color,int lineWidth)
+{
+	cv::Point point;
+	for(int i=0; i<noOfCordinates; i++)
+	{
+		point.y=cordinates[i].x + centerOfGravity.x;
+		point.x=cordinates[i].y + centerOfGravity.y;
+		cv::line(source,point,point,color,lineWidth);
+	}
+}
+
