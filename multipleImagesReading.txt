@@ -1,0 +1,40 @@
+//method1:
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+int main(int argc,char** argv)
+{
+    char filename[100];
+    cv::Mat imag;
+    for(unsigned int i=0;i<100;i++)
+    {
+        sprintf(filename,"F:/image/2/image (%d).bmp",i);
+        imag=cv::imread(filename,0);//导入图片
+        cv::imshow("image",imag);   
+        cv::waitKey(0);
+        //其他的操作
+        //...
+    }
+}
+
+
+//method2
+#define IMAGE_LIST_FILE "inputimage.txt"
+int main()
+{
+    FILE *fp;
+    char imagepath[200];
+
+    /* IMAGE_LIST_FILE 存放图像的名字*/
+    fp=fopen(IMAGE_LIST_FILE,"r");
+    while(!feof(fp))
+    while(fscanf(fp,   "%s ",   imagepath)   >   0) 
+    {
+            //读取图片
+            cv::Mat img=imread(imagepath);
+            cv::imshow("ii",img);
+            cv::waitKey(3000); //每隔三秒显示
+            //其他操作      
+    }
+            return 0;
+}
