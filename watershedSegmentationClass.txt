@@ -1,0 +1,34 @@
+#if !defined WATERSHS
+#define WATERSHS
+
+#include<opencv2/core/core.hpp>
+#include<opencv2/imgproc/imgproc.hpp>
+
+class watershedSegment
+{
+   private:
+	   cv::Mat marks;
+   public：
+	   
+	   void setMarks(const cv::Mat &markImage){   
+		   markImage.convertTo(marks, CV_32S);
+	   }
+
+       cv::Mat process(const cv::Mat &image){
+		   cv::watered(image, marks);
+		   return marks;
+       }
+	   cv::Mat getSegmentation(){
+		   cv::Mat tmp;
+		   marks.convertTo(tmp, CV_8U);
+		   return tmp;
+	   }
+	   cv::Mat getWatersheds(){
+		   cv::Mat tmp;
+		   marks.converTo(tmp, CV_8U, 255, 255);//变换前将每个像素p转换为255p+255
+		   return tmp;
+	   }
+
+}
+
+#endif
