@@ -1,0 +1,60 @@
+// cvbasic.cpp : 定义控制台应用程序的入口点。
+//
+
+#include "stdafx.h"
+#include"watershed.h"
+#include<opencv2\features2d\features2d.hpp>
+#include<opencv2\highgui\highgui.hpp>
+#include<opencv2\imgproc\imgproc.hpp>
+using namespace std;
+using namespace cv;
+
+int _tmain(int argc, _TCHAR* argv[])
+{
+	//
+	Mat imageOrg,imageBin;
+	imageOrg = imread("");
+    //binary
+	cv::threshold(imageOrg, imageBin, 200, 255, THRESH_BINARY_INV);
+	//close calculate
+	//structrue element create
+	cv::Mat element(5, 5, CV_8U, Scalar(1));
+	Mat imageMorph;
+	cv::morphologyEx(imageBin, imageMorph, cv::MORPH_CLOSE, element, Point(-1, -1), -1);
+	Mat imageDilate;
+	cv::dilate(imageMorph, imageDilate, cv::Mat(), Point(-1, -1), 4);
+	Mat imageDilateBin;
+	cv::threshold(imageDilate, imageDilateBin, 200, 255, THRESH_BINARY_INV);
+	Mat marks;
+	marks = imageMorph + imageDilateBin;
+	watershedSegment segment1;
+	segment1.setMarks(marks);
+	segment1.process(imageOrg);
+	imshow("watershedResult", segment1.getSegmentation());
+	imshow("watersheds", segment1.getWatersheds());
+
+	Mat markImage = segment1.getSegmentation();
+	cv::threshold(markImage, markImage, 250, 255, THRESH_BINARY_INV);
+	cvtColor(markImage, markImage, COLOR_GRAY2BGR);
+	markImage = imageOrg.mul(markImage);
+
+	int rowSize = imageOrg.rows;
+	int colSize = imageOrg.cols;
+	for (size_t j = 0; j < rowSize; j++)
+	{
+		uchar*data = imageOrg.ptr<uchar>(j);
+		for (size_t i = 0; i < rowSize; i++)
+		{
+			if (*data ==0)
+			{
+				*data = 255;
+				data++;
+			}
+		}
+	}
+	imshow("result", markImage);
+	waitKey();
+
+	return 0;
+}
+
